@@ -7,7 +7,7 @@ from rank_bm25 import BM25Okapi
 import sys
 sys.path.append("src")
 
-from answer_generator import generate_answer
+from answer_generator import generate_answer, get_sources
 
 def tokenize(text):
     """
@@ -232,8 +232,17 @@ if __name__ == "__main__":
         query,
         reranked_results
     )
-
+    sources = get_sources(reranked_results)
     # print("\n--------------------------------")
     # print("FINAL ANSWER")
     # print("--------------------------------")
     print(answer)
+    print("\n--------------------------------")
+    print("SOURCES")
+    print("--------------------------------")
+
+    for source in sources:
+        print(
+        f"- {source['document']} "
+        f"(Page {source['page']})"
+    )
