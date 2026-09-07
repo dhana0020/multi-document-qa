@@ -4,7 +4,10 @@ from reranker import create_reranker, rerank
 import faiss
 from sentence_transformers import SentenceTransformer
 from rank_bm25 import BM25Okapi
+import sys
+sys.path.append("src")
 
+from answer_generator import generate_answer
 
 def tokenize(text):
     """
@@ -210,27 +213,27 @@ if __name__ == "__main__":
         bm25_weight=0.5,
         vector_weight=0.5
     )
+    
     print("\nLoading reranker...")
     reranker = create_reranker()
 
     reranked_results = rerank(
-    query,
-    results,
-    reranker,
-    top_k=5
-)
+        query,
+        results,
+        reranker,
+        top_k=5
+    )
+
     print("\n--------------------------------")
-    print("HYBRID SEARCH RESULTS")
+    print("GENERATING  ANSWER")
     print("--------------------------------")
 
-    for rank, result in enumerate(reranked_results, start=1):
+    answer = generate_answer(
+        query,
+        reranked_results
+    )
 
-        print(f"\nRank: {rank}")
-        print(f"Document: {result['document']}")
-        print(f"Page: {result['page']}")
-        print(f"Chunk: {result['chunk_id']}")
-        print(f"BM25 Score: {result['bm25_score']:.4f}")
-        print(f"Vector Score: {result['vector_score']:.4f}")
-        print(f"Hybrid Score: {result['hybrid_score']:.4f}")
-        print(f"Rerank Score: {result['rerank_score']:.4f}")
-        print(f"Text: {result['text'][:500]}")
+    # print("\n--------------------------------")
+    # print("FINAL ANSWER")
+    # print("--------------------------------")
+    print(answer)
