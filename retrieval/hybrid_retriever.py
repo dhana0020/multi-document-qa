@@ -1,6 +1,6 @@
 import json
 import re
-
+from reranker import create_reranker, rerank
 import faiss
 from sentence_transformers import SentenceTransformer
 from rank_bm25 import BM25Okapi
@@ -206,16 +206,24 @@ if __name__ == "__main__":
         bm25,
         vector_index,
         model,
-        top_k=5,
+        top_k=10,
         bm25_weight=0.5,
         vector_weight=0.5
     )
+    print("\nLoading reranker...")
+    reranker = create_reranker()
 
+    reranked_results = rerank(
+    query,
+    results,
+    reranker,
+    top_k=5
+)
     print("\n--------------------------------")
     print("HYBRID SEARCH RESULTS")
     print("--------------------------------")
 
-    for rank, result in enumerate(results, start=1):
+    for rank, result in enumerate(reranked_results, start=1):
 
         print(f"\nRank: {rank}")
         print(f"Document: {result['document']}")
@@ -224,4 +232,5 @@ if __name__ == "__main__":
         print(f"BM25 Score: {result['bm25_score']:.4f}")
         print(f"Vector Score: {result['vector_score']:.4f}")
         print(f"Hybrid Score: {result['hybrid_score']:.4f}")
+        print(f"Rerank Score: {result['rerank_score']:.4f}")
         print(f"Text: {result['text'][:500]}")
