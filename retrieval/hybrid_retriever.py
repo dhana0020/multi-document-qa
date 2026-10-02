@@ -6,8 +6,9 @@ from sentence_transformers import SentenceTransformer
 from rank_bm25 import BM25Okapi
 import sys
 sys.path.append("src")
-
+from voice_input import record_audio, speech_to_text
 from answer_generator import generate_answer, get_sources
+
 
 def tokenize(text):
     """
@@ -201,7 +202,9 @@ if __name__ == "__main__":
     print("HYBRID SEARCH READY")
     print("--------------------------------")
 
-    query = input("\nEnter your question: ")
+    record_audio()
+
+    query = speech_to_text()
 
     results = hybrid_search(
         query,
