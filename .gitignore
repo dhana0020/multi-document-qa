@@ -13,3 +13,5 @@ data/processed/
 
 *.faiss
 *.pkl
+
+*.wav
