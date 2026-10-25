@@ -1,3 +1,4 @@
+
 import streamlit as st
 import json
 import re
@@ -14,9 +15,82 @@ from answer_generator import generate_answer, get_sources
 from voice_input import record_audio, speech_to_text
 
 
+# -----------------------------
+# Background color styling
+# -----------------------------
+
+st.set_page_config(
+    page_title="Academic Document QA",
+    page_icon="📚",
+    layout="wide"
+)
+
+st.markdown(
+    """
+    <style>
+    .stApp {
+        background: linear-gradient(
+            135deg,
+            #e3f2fd,
+            #bbdefb,
+            #90caf9
+        );
+    }
+
+    .block-container {
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+    }
+
+    h1, h2, h3 {
+        color: #123b5d !important;
+    }
+
+    p, label, .stMarkdown {
+        color: #173b57;
+    }
+
+    div[data-testid="stTextInput"] input {
+        background-color: #ffffff;
+        color: #173b57;
+        border: 1px solid #90caf9;
+        border-radius: 8px;
+    }
+
+    div.stButton > button {
+        background-color: #1565c0;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-weight: 600;
+    }
+
+    div.stButton > button:hover {
+        background-color: #0d47a1;
+        color: white;
+        border: none;
+    }
+
+    div[data-testid="stAlert"] {
+        border-radius: 8px;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+
+# -----------------------------
+# Tokenization
+# -----------------------------
+
 def tokenize(text):
     return re.findall(r"\b\w+\b", text.lower())
 
+
+# -----------------------------
+# Load document chunks
+# -----------------------------
 
 @st.cache_data
 def load_chunks(file_path):
@@ -24,11 +98,19 @@ def load_chunks(file_path):
         return json.load(file)
 
 
+# -----------------------------
+# Load models and indexes
+# -----------------------------
+
 @st.cache_resource
 def load_models_and_indexes():
     chunks = load_chunks("data/processed/chunks.json")
 
-    tokenized_chunks = [tokenize(chunk["text"]) for chunk in chunks]
+    tokenized_chunks = [
+        tokenize(chunk["text"])
+        for chunk in chunks
+    ]
+
     bm25 = BM25Okapi(tokenized_chunks)
 
     model = SentenceTransformer("all-MiniLM-L6-v2")
@@ -53,6 +135,10 @@ def load_models_and_indexes():
     return chunks, bm25, model, vector_index, reranker
 
 
+# -----------------------------
+# Hybrid search: BM25 + FAISS
+# -----------------------------
+
 def hybrid_search(
     query,
     chunks,
@@ -67,14 +153,16 @@ def hybrid_search(
 
     bm25_scores = bm25.get_scores(query_tokens)
 
-    max_bm25 = max(bm25_scores)
+    max_bm25 = max(bm25_scores) if len(bm25_scores) else 0
 
     if max_bm25 > 0:
         normalized_bm25 = [
             score / max_bm25 for score in bm25_scores
         ]
     else:
-        normalized_bm25 = [0.0 for _ in bm25_scores]
+        normalized_bm25 = [
+            0.0 for _ in bm25_scores
+        ]
 
     query_embedding = model.encode(
         [query],
@@ -94,12 +182,12 @@ def hybrid_search(
             vector_indices[0],
             vector_scores[0]
         )
+        if index >= 0
     }
 
     combined_results = []
 
     for index in range(len(chunks)):
-
         bm25_score = normalized_bm25[index]
         vector_score = vector_score_map.get(index, 0.0)
 
@@ -125,16 +213,10 @@ def hybrid_search(
 
 
 # -----------------------------
-# Streamlit interface
+# Application title
 # -----------------------------
 
-st.set_page_config(
-    page_title="Academic Document QA",
-    page_icon="📚",
-    layout="wide"
-)
-
-st.title("Academic Document Question Answering")
+st.title("📚 Academic Document Question Answering")
 
 st.write(
     "Ask questions based on the provided academic PDF documents."
@@ -146,7 +228,6 @@ st.write(
 # -----------------------------
 
 with st.spinner("Loading document retrieval system..."):
-
     chunks, bm25, model, vector_index, reranker = (
         load_models_and_indexes()
     )
@@ -160,7 +241,8 @@ st.success("Document retrieval system ready.")
 
 question = st.text_input(
     "Enter your question:",
-    placeholder="Example: What is supervised learning?"
+    placeholder="Example: What is supervised learning?",
+    key="question_input"
 )
 
 
@@ -170,26 +252,63 @@ question = st.text_input(
 
 st.write("Or use your voice:")
 
-if st.button("🎤 Record Question"):
 
-    with st.spinner("Recording... Speak now!"):
+def record_voice_question():
+    try:
+        with st.spinner("Recording... Speak now!"):
+            record_audio()
 
-        record_audio()
+        with st.spinner("Converting speech to text..."):
+            recognized_question = speech_to_text()
 
-    with st.spinner("Converting speech to text..."):
+        if recognized_question and recognized_question.strip():
+            st.session_state["question_input"] = (
+                recognized_question.strip()
+            )
+            st.session_state["voice_error"] = ""
 
-        question = speech_to_text()
+        else:
+            st.session_state["voice_error"] = (
+                "No speech was recognized. Please try again."
+            )
 
-    st.session_state["voice_question"] = question
+    except Exception as error:
+        st.session_state["voice_error"] = (
+            f"Voice input failed: {error}"
+        )
 
 
+def clear_question():
+    st.session_state["question_input"] = ""
+    st.session_state["voice_error"] = ""
+
+
+voice_col, clear_col = st.columns([2, 1])
+
+with voice_col:
+    st.button(
+        "🎤 Record Question",
+        on_click=record_voice_question
+    )
+
+with clear_col:
+    st.button(
+        "Clear Question",
+        on_click=clear_question
+    )
+
+
+if st.session_state.get("voice_error"):
+    st.warning(st.session_state["voice_error"])
+
+
+# -----------------------------
 # Display recognized question
-if "voice_question" in st.session_state:
+# -----------------------------
 
-    question = st.session_state["voice_question"]
-
+if st.session_state.get("question_input", "").strip():
     st.info(
-        f"Recognized question: {question}"
+        f"Current question: {st.session_state['question_input']}"
     )
 
 
@@ -199,50 +318,60 @@ if "voice_question" in st.session_state:
 
 if st.button("Ask Question"):
 
-    if not question.strip():
+    question = st.session_state.get(
+        "question_input", ""
+    ).strip()
 
+    if not question:
         st.warning("Please enter or record a question.")
 
     else:
+        try:
+            with st.spinner("Searching documents..."):
+                results = hybrid_search(
+                    question,
+                    chunks,
+                    bm25,
+                    vector_index,
+                    model,
+                    top_k=10
+                )
 
-        with st.spinner("Searching documents..."):
+                reranked_results = rerank(
+                    question,
+                    results,
+                    reranker,
+                    top_k=5
+                )
 
-            results = hybrid_search(
-                question,
-                chunks,
-                bm25,
-                vector_index,
-                model,
-                top_k=10
+            if not reranked_results:
+                st.warning("No relevant document sections were found.")
+
+            else:
+                with st.spinner("Generating answer..."):
+                    answer = generate_answer(
+                        question,
+                        reranked_results
+                    )
+
+                    sources = get_sources(
+                        reranked_results
+                    )
+
+                st.subheader("Answer")
+                st.write(answer)
+
+                st.subheader("Sources")
+
+                for source in sources:
+                    st.write(
+                        f"- {source['document']} "
+                        f"(Page {source['page']})"
+                    )
+
+        except Exception as error:
+            st.error(
+                "Unable to generate the answer. "
+                "Please try again."
             )
-
-            reranked_results = rerank(
-                question,
-                results,
-                reranker,
-                top_k=5
-            )
-
-        with st.spinner("Generating answer..."):
-
-            answer = generate_answer(
-                question,
-                reranked_results
-            )
-
-            sources = get_sources(
-                reranked_results
-            )
-
-        st.subheader("Answer")
-
-        st.write(answer)
-
-        st.subheader("Sources")
-
-        for source in sources:
-
-            st.write(
-                f"- {source['document']} "
-                f"(Page {source['page']})"
-            )
+            st.exception(error)
