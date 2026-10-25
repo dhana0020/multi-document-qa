@@ -1,7 +1,10 @@
+
 import os
+import time
 
 from dotenv import load_dotenv
 from google import genai
+from google.genai import errors
 
 
 load_dotenv()
@@ -14,7 +17,16 @@ if not api_key:
 client = genai.Client(api_key=api_key)
 
 
+# Try the primary model first, then a fallback model.
+# Confirm these model IDs are available to your API key.
+MODELS = [
+    "gemini-3.6-flash",
+    "gemini-3.8-flash",
+]
+
+
 def generate_answer(question, retrieved_chunks):
+
     context = "\n\n".join(
         [
             f"Document: {chunk['document']}\n"
@@ -43,15 +55,55 @@ Document Context:
 {context}
 """
 
-    response = client.models.generate_content(
-        model="gemini-3.6-flash",
-        contents=prompt
-    )
+    last_error = None
 
-    return response.text
+    for model_name in MODELS:
+
+        # Retry temporary server errors up to 3 times.
+        for attempt in range(3):
+
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt
+                )
+
+                if response.text:
+                    return response.text
+
+                last_error = RuntimeError(
+                    f"{model_name} returned an empty response."
+                )
+                break
+
+            except errors.ServerError as error:
+                last_error = error
+
+                # Retry only temporary server errors.
+                if getattr(error, "code", None) not in (500, 502, 503, 504):
+                    raise
+
+                if attempt < 2:
+                    time.sleep(2 ** attempt)
+
+            except errors.APIError as error:
+                last_error = error
+
+                # Don't retry authentication, invalid request,
+                # or other non-server API errors.
+                raise
+
+        # If the primary model failed, try the next model.
+
+    raise RuntimeError(
+        "Gemini could not generate an answer after retries. "
+        "Please try again later or check model availability. "
+        f"Last error: {last_error}"
+    )
 
 
 def get_sources(retrieved_chunks, max_sources=3):
+
     sorted_chunks = sorted(
         retrieved_chunks,
         key=lambda x: x.get("rerank_score", 0),
@@ -61,6 +113,7 @@ def get_sources(retrieved_chunks, max_sources=3):
     sources = []
 
     for chunk in sorted_chunks:
+
         source = {
             "document": chunk["document"],
             "page": chunk["page"]
